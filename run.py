@@ -68,6 +68,21 @@ def run_once(client, args, rng: random.Random, usage: Usage) -> tuple[Transcript
                 model=args.debater_model, solo=solo,
             )
 
+    if not solo and not args.no_closing:
+        # Each round the second speaker talks last. Give the first speaker one
+        # short reply so neither side ends with an unanswered statement.
+        first = sorted(positions)[0]
+        r = args.rounds + 1
+        scripted = args.adversary != "none" and positions[first] != truth
+        print(f"  closing: Debater {first} ({positions[first]}{', scripted' if scripted else ''})...", file=sys.stderr)
+        if scripted:
+            scripted_turn(transcript, first, r, args.adversary, closing=True)
+        else:
+            debater_turn(
+                client, transcript, first, r, args.rounds, verified, usage,
+                model=args.debater_model, closing=True,
+            )
+
     if args.judge == "human":
         verdict = human_judge(transcript, verified)
     else:
@@ -89,6 +104,7 @@ def write_run(args, transcript: Transcript, verdict, trial: int) -> Path:
         f"- Scenario: {args.scenario}\n"
         f"- False side: {'scripted adversary (' + args.adversary + ')' if args.adversary != 'none' else args.debater_model}\n"
         f"- Debaters: {args.debater_model}, judge: {args.judge if args.judge == 'human' else args.judge_model}\n"
+        f"- Closing rebuttal: {'no' if args.no_closing or args.mode == 'consultancy' else 'yes'}\n"
         f"- Evidence shown to judge: {'no' if args.unverified else 'yes'}\n"
         f"- Honest side: {', '.join(honest)} · truth: `{truth}` · judge decided: `{verdict.decision}` "
         f"→ **{'correct' if verdict.decision == truth else 'WRONG'}**\n\n"
@@ -109,6 +125,8 @@ def main() -> int:
                    help="replace the false-side debater with a script (hard scenario only)")
     p.add_argument("--judge", choices=["model", "human"], default="model")
     p.add_argument("--unverified", action="store_true", help="hide the evidence ledger from the judge")
+    p.add_argument("--no-closing", action="store_true",
+                   help="skip the first speaker's closing rebuttal (the original format)")
     p.add_argument("--trials", type=int, default=1)
     p.add_argument("--seed", type=int, default=7, help="plant data seed")
     p.add_argument("--debater-model", default=DEBATER_MODEL)

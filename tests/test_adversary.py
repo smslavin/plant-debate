@@ -76,3 +76,12 @@ def test_solo_script_avoids_self_damaging_evidence():
 def test_solo_selective_has_no_fabrication():
     text = " ".join(s.text for s in _run("selective", solo=True).statements)
     assert "grinding noise" not in text and "stayed above 4 mm/s" not in text
+
+
+def test_scripted_closing_adds_no_new_claims():
+    t = Transcript(hard(), {"A": "pump", "B": "instrument"})
+    n = len(t.evidence)
+    scripted_turn(t, "A", 4, "lying", closing=True)
+    st = t.statements[-1]
+    assert st.closing and len(t.evidence) == n
+    assert "[Closing rebuttal] Debater A" in t.render()

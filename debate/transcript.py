@@ -36,6 +36,7 @@ class Statement:
     round: int
     text: str
     bad_citations: tuple[str, ...] = ()
+    closing: bool = False
 
 
 @dataclass
@@ -70,10 +71,10 @@ class Transcript:
         detail = f"Maintenance log {asset}: " + " | ".join(records[asset])
         return self._add(speaker, asset, detail)
 
-    def add_statement(self, speaker: str, round_: int, text: str) -> Statement:
+    def add_statement(self, speaker: str, round_: int, text: str, closing: bool = False) -> Statement:
         known = {e.id for e in self.evidence}
         bad = tuple(sorted({c for c in CITATION.findall(text) if c not in known}, key=lambda c: int(c[1:])))
-        st = Statement(speaker, round_, text.strip(), bad)
+        st = Statement(speaker, round_, text.strip(), bad, closing)
         self.statements.append(st)
         return st
 
@@ -105,7 +106,8 @@ class Transcript:
             parts.append("")
         parts.append("DEBATE:")
         for st in self.statements:
-            parts.append(f"[Round {st.round}] Debater {st.speaker}: {st.text}")
+            label = "Closing rebuttal" if st.closing else f"Round {st.round}"
+            parts.append(f"[{label}] Debater {st.speaker}: {st.text}")
             if show_evidence and st.bad_citations:
                 parts.append(
                     f"  ⚠ harness: {', '.join(st.bad_citations)} cited by Debater {st.speaker} "

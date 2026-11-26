@@ -199,3 +199,11 @@ def test_usage_cost():
     u.add("claude-opus-5-5", NS(input_tokens=1_000_000, output_tokens=0))
     u.add("claude-haiku-5-5", NS(input_tokens=0, output_tokens=1_000_000))
     assert u.cost() == pytest.approx(4.50)
+
+
+def test_closing_turn_is_labeled(transcript):
+    client = FakeClient([_resp("end_turn", NS(type="text", text="Final word."))])
+    debater_turn(client, transcript, "A", 4, 3, True, Usage(), closing=True)
+    assert transcript.statements[-1].closing
+    assert "closing rebuttal" in client.calls[0]["messages"][0]["content"]
+    assert "[Closing rebuttal] Debater A: Final word." in transcript.render()
