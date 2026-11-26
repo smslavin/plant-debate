@@ -29,6 +29,7 @@ from debate.agents import (
     model_judge,
     verdict_json,
 )
+from debate.adversary import STYLES, scripted_turn
 from debate.scenario import SCENARIOS
 from debate.transcript import Transcript
 
@@ -56,7 +57,12 @@ def run_once(client, args, rng: random.Random, usage: Usage) -> tuple[Transcript
 
     for r in range(1, args.rounds + 1):
         for speaker in sorted(positions):
-            print(f"  round {r}: Debater {speaker} ({positions[speaker]})...", file=sys.stderr)
+            scripted = args.adversary != "none" and positions[speaker] != truth
+            print(f"  round {r}: Debater {speaker} ({positions[speaker]}{', scripted' if scripted else ''})...",
+                  file=sys.stderr)
+            if scripted:
+                scripted_turn(transcript, speaker, r, args.adversary)
+                continue
             debater_turn(
                 client, transcript, speaker, r, args.rounds, verified, usage,
                 model=args.debater_model, solo=solo,
@@ -73,13 +79,15 @@ def run_once(client, args, rng: random.Random, usage: Usage) -> tuple[Transcript
 def write_run(args, transcript: Transcript, verdict, trial: int) -> Path:
     RUNS.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    tag = f"{args.scenario}-{args.mode}{'-unverified' if args.unverified else ''}"
+    adv = f"-{args.adversary}" if args.adversary != "none" else ""
+    tag = f"{args.scenario}-{args.mode}{adv}{'-unverified' if args.unverified else ''}"
     path = RUNS / f"{stamp}-{tag}-{trial}.md"
     truth = transcript.scenario.truth
     honest = [s for s, k in transcript.positions.items() if k == truth] or ["none"]
     path.write_text(
         f"# {args.mode.title()} run {trial}\n\n"
         f"- Scenario: {args.scenario}\n"
+        f"- False side: {'scripted adversary (' + args.adversary + ')' if args.adversary != 'none' else args.debater_model}\n"
         f"- Debaters: {args.debater_model}, judge: {args.judge if args.judge == 'human' else args.judge_model}\n"
         f"- Evidence shown to judge: {'no' if args.unverified else 'yes'}\n"
         f"- Honest side: {', '.join(honest)} · truth: `{truth}` · judge decided: `{verdict.decision}` "
@@ -97,6 +105,8 @@ def main() -> int:
     p.add_argument("--honest", default="random",
                    help="debate: A|B|random. consultancy: A (advocate tells the truth)|none|random")
     p.add_argument("--rounds", type=int, default=3)
+    p.add_argument("--adversary", choices=("none",) + STYLES, default="none",
+                   help="replace the false-side debater with a script (hard scenario only)")
     p.add_argument("--judge", choices=["model", "human"], default="model")
     p.add_argument("--unverified", action="store_true", help="hide the evidence ledger from the judge")
     p.add_argument("--trials", type=int, default=1)
@@ -108,6 +118,14 @@ def main() -> int:
     valid = {"debate": {"A", "B", "random"}, "consultancy": {"A", "none", "random"}}[args.mode]
     if args.honest not in valid:
         p.error(f"--honest for {args.mode} must be one of {sorted(valid)}")
+
+    if args.adversary != "none":
+        if args.scenario != "hard":
+            p.error("--adversary needs --scenario hard")
+        if args.rounds > 3:
+            p.error("the scripted adversary has 3 rounds")
+        if args.mode == "consultancy" and args.honest != "none":
+            p.error("with --adversary, consultancy needs --honest none (the script only argues the false side)")
 
     load_dotenv()
     client = anthropic.Anthropic()

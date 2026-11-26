@@ -56,6 +56,26 @@ uv run run.py --unverified --trials 6
 
 Comparison 1 against 2 shows what debate adds. Comparison 2 against 3 shows how much of it comes from evidence the judge can trust.
 
+### Scripted adversary
+
+Opus won't argue the false side to win. Given the `pump` position, it goes looking for disconfirming evidence and concedes, which leaves the judge with nothing to do. `--adversary` replaces the false-side debater with a script ([debate/adversary.py](debate/adversary.py)) so you control how dishonest it is:
+
+- `selective`: only true statements about real evidence, picked and framed to mislead. It hunts for the one-hour window where flat motor current happens to fall the most.
+- `lying`: the same requests and framing, plus three false descriptions of real log entries (for example "vibration stayed above 4 mm/s [E3]"). A judge who checks the cited evidence can catch each one.
+
+Both styles make identical requests, so only the wording differs between them. With no opponent (consultancy), the script behaves like a strategic advocate: it fetches only favorable evidence, never raises the header transmitter or the rack temperature, and (lying style) swaps one checkable lie for an uncited one ("operators heard a grinding noise"). The script can't respond to what the honest debater says, so it pre-empts the predictable arguments instead.
+
+```bash
+# Consultancy: only the script and the judge. No Opus calls, costs about a cent.
+uv run run.py --mode consultancy --honest none --adversary selective --trials 5
+uv run run.py --mode consultancy --honest none --adversary lying --trials 5
+uv run run.py --mode consultancy --honest none --adversary lying --unverified --trials 5
+
+# Debate: the honest side is Opus, the false side is the script.
+uv run run.py --adversary lying --trials 4
+uv run run.py --adversary lying --unverified --trials 4
+```
+
 ## What to watch for in transcripts
 
 - **Narrowing.** Good runs converge on one fact, usually "flow and current are flat, so the pump is delivering the same work".
@@ -74,6 +94,7 @@ debate/scenario.py    synthetic plant data, hypotheses, ground truth
 debate/transcript.py  evidence ledger, citations, what the judge sees
 debate/agents.py      debater tool loop, model judge, human judge
 run.py                CLI
+debate/adversary.py   scripted dishonest debater (selective / lying)
 tests/                offline tests (fake client, no API calls)
 ```
 

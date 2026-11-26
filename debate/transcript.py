@@ -24,6 +24,7 @@ class Evidence:
     requested_by: str
     source: str  # tag or asset name
     detail: str  # rendered by the harness, never by a debater
+    stats: dict[str, float] | None = None  # for historian queries
 
     def render(self) -> str:
         return f"{self.id} (requested by {self.requested_by}) · {self.detail}"
@@ -44,8 +45,8 @@ class Transcript:
     evidence: list[Evidence] = field(default_factory=list)
     statements: list[Statement] = field(default_factory=list)
 
-    def _add(self, speaker: str, source: str, detail: str) -> Evidence:
-        ev = Evidence(f"E{len(self.evidence) + 1}", speaker, source, detail)
+    def _add(self, speaker: str, source: str, detail: str, stats: dict[str, float] | None = None) -> Evidence:
+        ev = Evidence(f"E{len(self.evidence) + 1}", speaker, source, detail, stats)
         self.evidence.append(ev)
         return ev
 
@@ -60,7 +61,7 @@ class Transcript:
             f"first {s['first']:.1f}, last {s['last']:.1f}, min {s['min']:.1f}, "
             f"max {s['max']:.1f}, mean {s['mean']:.1f}, trend {s['trend_per_hour']:+.2f}/h"
         )
-        return self._add(speaker, tag, detail)
+        return self._add(speaker, tag, detail, s)
 
     def read_log(self, speaker: str, asset: str) -> Evidence:
         records = self.scenario.records
