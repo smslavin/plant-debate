@@ -43,8 +43,8 @@ QUERY_TOOL = {
         "type": "object",
         "properties": {
             "tag": {"type": "string", "enum": list(TAGS)},
-            "start_hour": {"type": "number", "minimum": 0, "maximum": 8},
-            "end_hour": {"type": "number", "minimum": 0, "maximum": 8},
+            "start_hour": {"type": "number"},
+            "end_hour": {"type": "number"},
         },
         "required": ["tag", "start_hour", "end_hour"],
         "additionalProperties": False,
