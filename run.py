@@ -29,7 +29,7 @@ from debate.agents import (
     model_judge,
     verdict_json,
 )
-from debate.scenario import booster_station
+from debate.scenario import SCENARIOS
 from debate.transcript import Transcript
 
 RUNS = Path(__file__).parent / "runs"
@@ -46,7 +46,7 @@ def assign_positions(mode: str, honest: str, rng: random.Random, truth: str, fal
 
 
 def run_once(client, args, rng: random.Random, usage: Usage) -> tuple[Transcript, object]:
-    scenario = booster_station(seed=args.seed)
+    scenario = SCENARIOS[args.scenario](args.seed)
     truth = scenario.truth
     false = next(h.key for h in scenario.hypotheses if h.key != truth)
     positions = assign_positions(args.mode, args.honest, rng, truth, false)
@@ -73,12 +73,13 @@ def run_once(client, args, rng: random.Random, usage: Usage) -> tuple[Transcript
 def write_run(args, transcript: Transcript, verdict, trial: int) -> Path:
     RUNS.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    tag = f"{args.mode}{'-unverified' if args.unverified else ''}"
+    tag = f"{args.scenario}-{args.mode}{'-unverified' if args.unverified else ''}"
     path = RUNS / f"{stamp}-{tag}-{trial}.md"
     truth = transcript.scenario.truth
     honest = [s for s, k in transcript.positions.items() if k == truth] or ["none"]
     path.write_text(
         f"# {args.mode.title()} run {trial}\n\n"
+        f"- Scenario: {args.scenario}\n"
         f"- Debaters: {args.debater_model}, judge: {args.judge if args.judge == 'human' else args.judge_model}\n"
         f"- Evidence shown to judge: {'no' if args.unverified else 'yes'}\n"
         f"- Honest side: {', '.join(honest)} · truth: `{truth}` · judge decided: `{verdict.decision}` "
@@ -91,6 +92,7 @@ def write_run(args, transcript: Transcript, verdict, trial: int) -> Path:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--scenario", choices=list(SCENARIOS), default="hard")
     p.add_argument("--mode", choices=["debate", "consultancy"], default="debate")
     p.add_argument("--honest", default="random",
                    help="debate: A|B|random. consultancy: A (advocate tells the truth)|none|random")

@@ -3,37 +3,56 @@ from types import SimpleNamespace as NS
 import pytest
 
 from debate.agents import MAX_QUERIES_PER_TURN, Usage, Verdict, debater_turn, model_judge
-from debate.scenario import booster_station, summarize
+from debate.scenario import easy, hard, summarize
 from debate.transcript import Transcript
 
 
 @pytest.fixture
 def transcript():
-    return Transcript(booster_station(), {"A": "pump", "B": "instrument"})
+    return Transcript(hard(), {"A": "pump", "B": "instrument"})
 
 
 # --- the scenario has the physics we claim -----------------------------------
 
-def test_scenario_is_deterministic():
-    assert booster_station(seed=3).series == booster_station(seed=3).series
+@pytest.mark.parametrize("build", [easy, hard])
+def test_scenario_is_deterministic(build):
+    assert build(3).series == build(3).series
 
 
-def test_pressure_falls_while_flow_and_current_stay_flat():
-    s = booster_station().series
+@pytest.mark.parametrize("build", [easy, hard])
+def test_pressure_falls_while_flow_and_current_stay_flat(build):
+    s = build().series
     assert summarize(s["PT-101"], 3, 8)["trend_per_hour"] < -2.0
     assert abs(summarize(s["FT-101"], 3, 8)["trend_per_hour"]) < 2.0
     assert abs(summarize(s["JT-101"], 3, 8)["trend_per_hour"]) < 0.1
 
 
-def test_red_herring_vibration_spike_is_present_but_brief():
-    s = booster_station().series
+@pytest.mark.parametrize("build", [easy, hard])
+def test_red_herring_vibration_spike_is_present_but_brief(build):
+    s = build().series
     assert summarize(s["VT-101"], 2.4, 2.7)["max"] > 4.0
-    assert summarize(s["VT-101"], 4, 8)["max"] < 2.6
+    assert summarize(s["VT-101"], 4, 8)["max"] < 3.0
 
 
 def test_summarize_rejects_empty_window():
     with pytest.raises(ValueError):
-        summarize(booster_station().series["PT-101"], 5, 5)
+        summarize(easy().series["PT-101"], 5, 5)
+
+
+def test_hard_valve_opens_and_vibration_creeps():
+    s = hard().series
+    fcv = summarize(s["FCV-101"], 0, 8)
+    assert 5.0 < fcv["last"] - fcv["first"] < 7.5
+    assert summarize(s["VT-101"], 7, 8)["mean"] > summarize(s["VT-101"], 0, 1)["mean"] + 0.2
+
+
+def test_hard_discharge_reads_below_header_at_the_end_but_within_tolerance():
+    s = hard().series
+    pt101 = summarize(s["PT-101"], 7.75, 8)["mean"]
+    pt102 = summarize(s["PT-102"], 7.75, 8)["mean"]
+    assert 0 < pt102 - pt101 < 2.0  # physically impossible, yet inside +/-1 psi each
+    # Earlier in the night the discharge is comfortably above the header.
+    assert summarize(s["PT-101"], 0, 1)["mean"] - summarize(s["PT-102"], 0, 1)["mean"] > 10
 
 
 # --- evidence ledger ----------------------------------------------------------
@@ -55,6 +74,25 @@ def test_fabricated_citation_is_flagged(transcript):
     st = transcript.add_statement("A", 1, "Pressure fell [E1] and vibration doubled [E7].")
     assert st.bad_citations == ("E7",)
     assert "E7 cited by Debater A does not exist" in transcript.render()
+
+
+def test_multi_citations_are_all_checked(transcript):
+    transcript.query("A", "PT-101", 0, 8)
+    st = transcript.add_statement("A", 1, "See [E1, E3] and E12.")
+    assert st.bad_citations == ("E3", "E12")
+
+
+def test_maintenance_log_becomes_evidence(transcript):
+    ev = transcript.read_log("B", "PT-101")
+    assert ev.id == "E1" and "OVERDUE" in ev.render()
+    with pytest.raises(KeyError):
+        transcript.read_log("B", "P-999")
+
+
+def test_easy_scenario_offers_no_log_tool():
+    from debate.agents import build_tools
+    assert [t["name"] for t in build_tools(easy())] == ["query_historian"]
+    assert [t["name"] for t in build_tools(hard())] == ["query_historian", "read_maintenance_log"]
 
 
 def test_unverified_render_hides_ledger_and_warnings(transcript):
@@ -102,7 +140,7 @@ def test_debater_turn_queries_then_states(transcript):
     ])
     text = debater_turn(client, transcript, "B", 1, 3, True, Usage())
     assert text.startswith("Flow is flat")
-    assert [e.tag for e in transcript.evidence] == ["FT-101"]
+    assert [e.source for e in transcript.evidence] == ["FT-101"]
     assert transcript.statements[-1].bad_citations == ()
     # The tool result sent back is the harness-rendered evidence, not model text.
     tool_result = client.calls[1]["messages"][-1]["content"][0]
@@ -119,6 +157,15 @@ def test_query_budget_is_enforced(transcript):
     assert len(transcript.evidence) == MAX_QUERIES_PER_TURN
     results = client.calls[1]["messages"][-1]["content"]
     assert sum(1 for r in results if r.get("is_error")) == 2
+
+
+def test_debater_can_read_logs(transcript):
+    client = FakeClient([
+        _resp("tool_use", NS(type="tool_use", id="tu1", name="read_maintenance_log", input={"asset": "PT-101"})),
+        _resp("end_turn", NS(type="text", text="Calibration is overdue [E1].")),
+    ])
+    debater_turn(client, transcript, "B", 1, 3, True, Usage())
+    assert transcript.evidence[0].source == "PT-101"
 
 
 def test_bad_tool_input_returns_error_result(transcript):

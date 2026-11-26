@@ -13,29 +13,20 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from debate.scenario import TAGS, Scenario, hhmm, summarize
+from debate.scenario import Hypothesis, Scenario, hhmm, summarize
 
-CITATION = re.compile(r"\[(E\d+)\]")
+CITATION = re.compile(r"\bE\d+\b")
 
 
 @dataclass(frozen=True)
 class Evidence:
     id: str
     requested_by: str
-    tag: str
-    start_hour: float
-    end_hour: float
-    stats: dict[str, float]
+    source: str  # tag or asset name
+    detail: str  # rendered by the harness, never by a debater
 
     def render(self) -> str:
-        t = TAGS[self.tag]
-        s = self.stats
-        return (
-            f"{self.id} (requested by {self.requested_by}) · {self.tag} {t.description} [{t.unit}] · "
-            f"{hhmm(self.start_hour)}-{hhmm(self.end_hour)} · "
-            f"first {s['first']:.1f}, last {s['last']:.1f}, min {s['min']:.1f}, "
-            f"max {s['max']:.1f}, mean {s['mean']:.1f}, trend {s['trend_per_hour']:+.2f}/h"
-        )
+        return f"{self.id} (requested by {self.requested_by}) · {self.detail}"
 
 
 @dataclass(frozen=True)
@@ -53,28 +44,45 @@ class Transcript:
     evidence: list[Evidence] = field(default_factory=list)
     statements: list[Statement] = field(default_factory=list)
 
-    def query(self, speaker: str, tag: str, start_hour: float, end_hour: float) -> Evidence:
-        if tag not in TAGS:
-            raise KeyError(f"Unknown tag {tag!r}. Known tags: {', '.join(TAGS)}")
-        stats = summarize(self.scenario.series[tag], start_hour, end_hour)
-        ev = Evidence(f"E{len(self.evidence) + 1}", speaker, tag, start_hour, end_hour, stats)
+    def _add(self, speaker: str, source: str, detail: str) -> Evidence:
+        ev = Evidence(f"E{len(self.evidence) + 1}", speaker, source, detail)
         self.evidence.append(ev)
         return ev
 
+    def query(self, speaker: str, tag: str, start_hour: float, end_hour: float) -> Evidence:
+        tags = self.scenario.tags
+        if tag not in tags:
+            raise KeyError(f"Unknown tag {tag!r}. Known tags: {', '.join(tags)}")
+        s = summarize(self.scenario.series[tag], start_hour, end_hour)
+        t = tags[tag]
+        detail = (
+            f"{tag} {t.description} [{t.unit}] · {hhmm(max(0, start_hour))}-{hhmm(min(8, end_hour))} · "
+            f"first {s['first']:.1f}, last {s['last']:.1f}, min {s['min']:.1f}, "
+            f"max {s['max']:.1f}, mean {s['mean']:.1f}, trend {s['trend_per_hour']:+.2f}/h"
+        )
+        return self._add(speaker, tag, detail)
+
+    def read_log(self, speaker: str, asset: str) -> Evidence:
+        records = self.scenario.records
+        if asset not in records:
+            raise KeyError(f"No maintenance log for {asset!r}. Assets with logs: {', '.join(records)}")
+        detail = f"Maintenance log {asset}: " + " | ".join(records[asset])
+        return self._add(speaker, asset, detail)
+
     def add_statement(self, speaker: str, round_: int, text: str) -> Statement:
         known = {e.id for e in self.evidence}
-        bad = tuple(sorted({c for c in CITATION.findall(text) if c not in known}))
+        bad = tuple(sorted({c for c in CITATION.findall(text) if c not in known}, key=lambda c: int(c[1:])))
         st = Statement(speaker, round_, text.strip(), bad)
         self.statements.append(st)
         return st
 
-    def hypothesis(self, speaker: str):
+    def hypothesis(self, speaker: str) -> Hypothesis:
         key = self.positions[speaker]
         return next(h for h in self.scenario.hypotheses if h.key == key)
 
     def case_brief(self) -> str:
         sc = self.scenario
-        lines = [f"ALARM: {sc.alarm}", sc.question, "", "Positions:"]
+        lines = [f"ALARM: {sc.alarm}", sc.question, sc.context, "", "Positions:"]
         for speaker in sorted(self.positions):
             h = self.hypothesis(speaker)
             lines.append(f"  Debater {speaker}: {h.claim} Recommended action: {h.action}")
@@ -89,7 +97,7 @@ class Transcript:
         """
         parts = [self.case_brief(), ""]
         if show_evidence:
-            parts.append("VERIFIED EVIDENCE (retrieved by the harness from the plant historian):")
+            parts.append("VERIFIED EVIDENCE (retrieved by the harness from plant systems):")
             parts.extend(f"  {e.render()}" for e in self.evidence)
             if not self.evidence:
                 parts.append("  (none)")
