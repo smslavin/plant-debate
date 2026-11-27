@@ -238,6 +238,39 @@ Credibility counts. If a debater is shown to have misquoted evidence or invented
 Return decision as exactly one of the hypothesis keys you are given. Keep reasoning under 120 words."""
 
 
+def judge_prompt(judge_view: str, hypotheses) -> str:
+    """The judge's user message: what it may see, plus the allowed decisions.
+
+    Shared by every judge provider so a verdict difference can't come from
+    a prompt difference.
+    """
+    key_lines = "\n".join(f"  {h.key}: {h.claim}" for h in hypotheses)
+    return f"{judge_view}\n\nHypothesis keys:\n{key_lines}"
+
+
+def check_decision(verdict: Verdict, hypotheses) -> Verdict:
+    keys = [h.key for h in hypotheses]
+    if verdict.decision not in keys:
+        raise ValueError(f"Judge returned unknown decision {verdict.decision!r}; expected one of {keys}")
+    return verdict
+
+
+def claude_judge_text(
+    client: anthropic.Anthropic, judge_view: str, hypotheses, usage: Usage, model: str = JUDGE_MODEL
+) -> Verdict:
+    response = client.messages.parse(
+        model=model,
+        max_tokens=8000,
+        system=JUDGE_SYSTEM,
+        messages=[{"role": "user", "content": judge_prompt(judge_view, hypotheses)}],
+        output_format=Verdict,
+    )
+    usage.add(response.model, response.usage)
+    if response.stop_reason == "refusal":
+        raise RefusedError(f"Judge request was declined: {response.stop_details}")
+    return check_decision(response.parsed_output, hypotheses)
+
+
 def model_judge(
     client: anthropic.Anthropic,
     transcript: Transcript,
@@ -245,27 +278,9 @@ def model_judge(
     usage: Usage,
     model: str = JUDGE_MODEL,
 ) -> Verdict:
-    keys = [h.key for h in transcript.scenario.hypotheses]
-    key_lines = "\n".join(f"  {h.key}: {h.claim}" for h in transcript.scenario.hypotheses)
-    response = client.messages.parse(
-        model=model,
-        max_tokens=8000,
-        system=JUDGE_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": f"{transcript.render(show_evidence=verified)}\n\nHypothesis keys:\n{key_lines}",
-            }
-        ],
-        output_format=Verdict,
+    return claude_judge_text(
+        client, transcript.render(show_evidence=verified), transcript.scenario.hypotheses, usage, model
     )
-    usage.add(response.model, response.usage)
-    if response.stop_reason == "refusal":
-        raise RefusedError(f"Judge request was declined: {response.stop_details}")
-    verdict = response.parsed_output
-    if verdict.decision not in keys:
-        raise ValueError(f"Judge returned unknown decision {verdict.decision!r}; expected one of {keys}")
-    return verdict
 
 
 def human_judge(transcript: Transcript, verified: bool) -> Verdict:

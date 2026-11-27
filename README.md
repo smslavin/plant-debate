@@ -76,6 +76,15 @@ uv run run.py --adversary lying --trials 4
 uv run run.py --adversary lying --unverified --trials 4
 ```
 
+### Cross-provider judge
+
+The debaters and the default judge are all Claude, and LLM judges tend to favor their own model family. `rejudge.py` replays every saved transcript (exactly what the original judge saw) through a Claude judge and a Gemini judge with the identical prompt and schema. Debaters aren't re-run, so it's cheap. It needs `GEMINI_API_KEY` in `.env`.
+
+```bash
+uv run rejudge.py                 # every transcript in runs/
+uv run rejudge.py --only lying    # one condition family
+```
+
 ## What to watch for in transcripts
 
 - **Narrowing.** Good runs converge on one fact, usually "flow and current are flat, so the pump is delivering the same work".
@@ -95,6 +104,8 @@ debate/transcript.py  evidence ledger, citations, what the judge sees
 debate/agents.py      debater tool loop, model judge, human judge
 run.py                CLI
 debate/adversary.py   scripted dishonest debater (selective / lying)
+debate/gemini.py      Gemini judge (cross-provider control)
+rejudge.py            re-judge saved transcripts with Claude and Gemini
 tests/                offline tests (fake client, no API calls)
 ```
 
