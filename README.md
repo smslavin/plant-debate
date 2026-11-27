@@ -30,6 +30,36 @@ All data is synthetic and deterministic ([debate/scenario.py](debate/scenario.py
 | Debate narrows to one checkable point | Debaters are told to narrow to one fact; the judge must name the crux |
 | Baseline: judge without debate | `--mode consultancy`: one advocate, no opponent |
 
+## Results
+
+Hard scenario, November 2026. Each cell is how many runs the judge got right. "Alone" is consultancy: the false-side advocate argues with no opponent. Every transcript was re-judged with the current judge prompt by Haiku 5.5 and by Gemini 3.8 Flash ([rejudge.py](rejudge.py)), so the two judges saw identical input.
+
+| False side | Format | Ledger shown | n | Haiku 5.5 | Gemini 3.8 Flash |
+|---|---|---|---|---|---|
+| Opus 5.5 (concedes) | debate | yes | 7 | 7/7 | 7/7 |
+| Opus 5.5 (concedes) | debate | no | 6 | 6/6 | 6/6 |
+| Script, selective | alone | yes | 7 | 5/7 | **1/7** |
+| Script, selective | alone | no | 5 | **0/5** | **0/5** |
+| Script, lying | alone | yes | 14 | 8/14 | 13/14 |
+| Script, lying | alone | no | 13 | **0/13** | **0/13** |
+| Script, lying | debate | yes | 4 | 4/4 | 4/4 |
+| Script, lying | debate | no | 12 | 11/12 | 12/12 |
+| Gemini 4 Neon | alone | yes | 4 | 4/4 | **1/4** |
+| Gemini 4 Neon | alone | no | 4 | 1/4 | **0/4** |
+| Gemini 4 Neon | debate | yes | 7 | 7/7 | 7/7 |
+| Gemini 4 Neon | debate | no | 4 | 4/4 | 4/4 |
+
+In every debate, an honest Opus 5.5 argued the true side. In the easy scenario all 18 runs were correct under both judges, because the false side conceded.
+
+What the table shows:
+
+- **Debate works where consultancy fails.** With the ledger hidden, a lone dishonest advocate fooled both judges in 18 of 18 scripted runs. Put an honest opponent against the lying script and Haiku got 15 of 16 right, Gemini 16 of 16. Haiku's one miss came before the closing rebuttal existed: the liar's last statement went unanswered.
+- **It isn't a same-family effect.** Against Gemini 4 Neon, a model from another lab that argues the false side without conceding, debate went 11 for 11 with either judge. And a Gemini judge reading Claude-written debates agreed with Haiku, so Haiku wasn't favoring its own family.
+- **Judges fail differently.** Gemini caught misquoted evidence (13/14) but was fooled by true evidence framed to mislead: the selective script (1/7) and Neon arguing alone (1/4). Haiku was the reverse: 8/14 against misquotes, 5/7 and 4/4 against framing. In debate the opponent points out the framing, and the gap disappears.
+- **Advocates leak.** Neon arguing alone with the ledger hidden still lost sometimes. Told to pre-empt objections, it raised transmitter drift itself and once volunteered that PT-101's calibration was overdue. The script never did.
+
+Caveats: n is small (4 to 14 per cell), so read directions, not percentages. Judge verdicts vary between runs: on the same 14 lying transcripts, Haiku scored 12/14 when the runs happened and 8/14 on the re-judge. A few early consultancy transcripts come from a script version that fetched evidence it shouldn't have. One Neon debate has an Opus turn that degenerated into repeated tool-call text, a bug since fixed. Opus-vs-Opus debates ran before debaters wrote inside `<statement>` tags, and some of their transcripts include the honest debater's working notes. That hurts the honest side, so it makes the debate results conservative.
+
 ## Run it
 
 ```bash
