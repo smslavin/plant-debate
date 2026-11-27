@@ -76,6 +76,18 @@ uv run run.py --adversary lying --trials 4
 uv run run.py --adversary lying --unverified --trials 4
 ```
 
+### A model from another lab on the false side
+
+Gemini 4 Neon, unlike Opus, argues the false side without conceding. `--false-model` puts it (or any Gemini or Claude model) on the false side, with the same prompts, tools and query budget as the honest Opus debater. A Gemini `--judge-model` also works.
+
+```bash
+uv run run.py --false-model gemini-4-neon --trials 4
+uv run run.py --false-model gemini-4-neon --unverified --trials 4
+uv run run.py --mode consultancy --honest none --false-model gemini-4-neon --trials 4
+```
+
+Debaters write their statement inside `<statement>` tags, and only that text reaches the judge. Without the tags, models sometimes appended working notes ("weak spots in my case") that handed the judge concessions.
+
 ### Cross-provider judge
 
 The debaters and the default judge are all Claude, and LLM judges tend to favor their own model family. `rejudge.py` replays every saved transcript (exactly what the original judge saw) through a Claude judge and a Gemini judge with the identical prompt and schema. Debaters aren't re-run, so it's cheap. It needs `GEMINI_API_KEY` in `.env`.
@@ -104,7 +116,7 @@ debate/transcript.py  evidence ledger, citations, what the judge sees
 debate/agents.py      debater tool loop, model judge, human judge
 run.py                CLI
 debate/adversary.py   scripted dishonest debater (selective / lying)
-debate/gemini.py      Gemini judge (cross-provider control)
+debate/gemini.py      Gemini debater and judge (cross-provider control)
 rejudge.py            re-judge saved transcripts with Claude and Gemini
 tests/                offline tests (fake client, no API calls)
 ```

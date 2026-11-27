@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 from google import genai
 
 from debate.agents import JUDGE_MODEL, RefusedError, Usage, claude_judge_text
-from debate.gemini import GEMINI_JUDGE_MODEL, GeminiUsage, gemini_judge_text
+from debate.gemini import GEMINI_JUDGE_MODEL, make_client, GeminiUsage, gemini_judge_text
 from debate.scenario import HYPOTHESES
 
 RUNS = Path(__file__).parent / "runs"
@@ -82,7 +82,7 @@ def main() -> int:
         print("no transcripts found", file=sys.stderr)
         return 1
 
-    claude, gemini = anthropic.Anthropic(), genai.Client()
+    claude, gemini = anthropic.Anthropic(), make_client()
     cu, gu = Usage(), GeminiUsage()
 
     def judge(case: Case) -> tuple[Case, str, str]:

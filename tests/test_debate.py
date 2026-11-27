@@ -2,7 +2,7 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from debate.agents import MAX_QUERIES_PER_TURN, Usage, Verdict, debater_turn, model_judge
+from debate.agents import RefusedError, MAX_QUERIES_PER_TURN, Usage, Verdict, debater_turn, model_judge
 from debate.scenario import easy, hard, summarize
 from debate.transcript import Transcript
 
@@ -207,3 +207,23 @@ def test_closing_turn_is_labeled(transcript):
     assert transcript.statements[-1].closing
     assert "closing rebuttal" in client.calls[0]["messages"][0]["content"]
     assert "[Closing rebuttal] Debater A: Final word." in transcript.render()
+
+
+def test_only_tagged_statement_reaches_the_judge():
+    from debate.agents import extract_statement
+
+    reply = "Checked PT-102.\n<statement>Compare 72.0 [E1] with 73.0 [E4].</statement>\n**Weak spot:** the valve."
+    assert extract_statement(reply) == "Compare 72.0 [E1] with 73.0 [E4]."
+    assert extract_statement("untagged reply") == "untagged reply"
+
+
+def test_truncated_turn_is_retried_then_skipped(transcript):
+    junk = NS(type="text", text="<invoke name=\"query_historian\">" * 50)
+    ok = NS(type="text", text="<statement>Flow is flat [E1].</statement>")
+    client = FakeClient([_resp("max_tokens", junk), _resp("end_turn", ok)])
+    assert debater_turn(client, transcript, "B", 1, 3, True, Usage()) == "Flow is flat [E1]."
+    assert "<invoke" not in transcript.render()
+
+    client = FakeClient([_resp("max_tokens", junk), _resp("max_tokens", junk)])
+    with pytest.raises(RefusedError):
+        debater_turn(client, transcript, "B", 2, 3, True, Usage())
