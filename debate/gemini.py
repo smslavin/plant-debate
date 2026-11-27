@@ -95,11 +95,17 @@ def gemini_judge_text(
 
 
 def make_client() -> genai.Client:
-    """A Gemini client that retries, like the Anthropic SDK does by default.
+    """A Gemini client with a timeout and retries, as the Anthropic SDK has by default.
 
-    Without retry options a single dropped connection ends the whole batch.
+    Without a timeout, a stalled connection hung a batch for hours; without
+    retries, a single dropped connection skipped a trial.
     """
-    return genai.Client(http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=4)))
+    return genai.Client(
+        http_options=types.HttpOptions(
+            timeout=180_000,  # ms per request; a thinking-heavy debater turn takes well under this
+            retry_options=types.HttpRetryOptions(attempts=4),
+        )
+    )
 
 
 def _tools(scenario) -> list[types.Tool]:
